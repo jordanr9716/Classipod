@@ -1,0 +1,1145 @@
+name: Build Fullscreen APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: pubspec.yaml
+          channel: stable
+          cache: true
+
+      - name: Apply all patches
+        run: |
+          cat > lib/features/device/widgets/device_frame.dart << 'DART_LIB_FEATURES_DEVICE_WIDGETS_DEVICE_FRAME_DART'
+          import 'package:classipod/core/constants/assets.dart';
+          import 'package:classipod/core/constants/keys.dart';
+          import 'package:classipod/features/device/widgets/device_screen.dart';
+          import 'package:classipod/features/settings/controller/settings_preferences_controller.dart';
+          import 'package:classipod/features/settings/models/device_color.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          
+          class DeviceFrame extends ConsumerWidget {
+            final Widget child;
+          
+            const DeviceFrame({super.key, required this.child});
+          
+            @override
+            Widget build(BuildContext context, WidgetRef ref) {
+              final size = MediaQuery.sizeOf(context);
+              final DeviceColor deviceColor = ref.watch(
+                settingsPreferencesControllerProvider.select((e) => e.deviceColor),
+              );
+              final deviceColorStyle = deviceColor.style;
+          
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  image: DecorationImage(
+                    image: const AssetImage(Assets.noiseImage),
+                    fit: BoxFit.cover,
+                    opacity: deviceColorStyle.noiseOpacity,
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: deviceColorStyle.frameGradientColors,
+                  ),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      top: 0,
+                      child: SizedBox(
+                        height: 20,
+                        width: size.width,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            boxShadow: [BoxShadow(blurRadius: 100, spreadRadius: 1)],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      child: SizedBox(
+                        height: 20,
+                        width: size.width,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            boxShadow: [BoxShadow(blurRadius: 100, spreadRadius: 1)],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      child: SizedBox(
+                        height: size.height,
+                        width: 20,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            boxShadow: [BoxShadow(blurRadius: 100, spreadRadius: 1)],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      child: SizedBox(
+                        height: size.height,
+                        width: 20,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            boxShadow: [BoxShadow(blurRadius: 100, spreadRadius: 1)],
+                          ),
+                        ),
+                      ),
+                    ),
+                    SafeArea(
+                      minimum: const EdgeInsets.fromLTRB(20, 30, 20, 30),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxHeight: 960,
+                            maxWidth: 450,
+                          ),
+                          child: DeviceScreen(key: deviceScreenGlobalKey, child: child),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          DART_LIB_FEATURES_DEVICE_WIDGETS_DEVICE_FRAME_DART
+
+          cat > lib/features/device/widgets/device_screen.dart << 'DART_LIB_FEATURES_DEVICE_WIDGETS_DEVICE_SCREEN_DART'
+          import 'package:classipod/core/extensions/build_context_extensions.dart';
+          import 'package:classipod/features/settings/controller/settings_preferences_controller.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          
+          class DeviceScreen extends ConsumerWidget {
+            final Widget child;
+          
+            const DeviceScreen({super.key, required this.child});
+          
+            @override
+            Widget build(BuildContext context, WidgetRef ref) {
+              final isTouchScreenEnabled = ref.watch(
+                settingsPreferencesControllerProvider.select(
+                  (e) => e.isTouchScreenEnabled,
+                ),
+              );
+          
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final double availableHeight = constraints.maxHeight;
+                  final double availableWidth = constraints.maxWidth;
+                  return AbsorbPointer(
+                    absorbing: !isTouchScreenEnabled,
+                    child: Container(
+                      height: availableHeight,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: context.appDeviceScreenBackgroundColor,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: context.appDeviceScreenBorderColor,
+                          width: 5,
+                        ),
+                      ),
+                      child: MediaQuery(
+                        data: MediaQuery.of(
+                          context,
+                        ).copyWith(size: Size(availableWidth - 10, availableHeight)),
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
+              );
+            }
+          }
+          DART_LIB_FEATURES_DEVICE_WIDGETS_DEVICE_SCREEN_DART
+
+          cat > lib/features/menu/screens/main_menu_screen.dart << 'DART_LIB_FEATURES_MENU_SCREENS_MAIN_MENU_SCREEN_DART'
+          import 'dart:async';
+          
+          import 'package:classipod/core/extensions/build_context_extensions.dart';
+          import 'package:classipod/core/navigation/routes.dart';
+          import 'package:classipod/core/services/audio_player_service.dart';
+          import 'package:classipod/core/widgets/display_list_tile.dart';
+          import 'package:classipod/features/custom_screen_elements/custom_screen.dart';
+          import 'package:classipod/features/menu/controller/split_screen_controller.dart';
+          import 'package:classipod/features/menu/models/split_screen_type.dart';
+          import 'package:classipod/features/status_bar/widgets/status_bar.dart';
+          import 'package:classipod/features/tutorial/controller/tutorial_controller.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:go_router/go_router.dart';
+          
+          enum _MainMenuDisplayItems {
+            music,
+            settings,
+            shuffleSongs,
+            nowPlaying;
+          
+            String title(BuildContext context) {
+              switch (this) {
+                case music:
+                  return context.localization.musicMenuScreenTitle;
+                case settings:
+                  return context.localization.settingsScreenTitle;
+                case shuffleSongs:
+                  return context.localization.shuffleSongsMenuTitle;
+                case nowPlaying:
+                  return context.localization.nowPlayingScreenTitle;
+              }
+            }
+          }
+          
+          class MainMenuScreen extends ConsumerStatefulWidget {
+            final bool showTutorial;
+          
+            const MainMenuScreen({super.key, this.showTutorial = false});
+          
+            @override
+            ConsumerState createState() => _MainMenuScreenState();
+          }
+          
+          class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
+              with CustomScreen {
+            @override
+            String get routeName => Routes.menu.name;
+          
+            @override
+            List<_MainMenuDisplayItems> get displayItems => _MainMenuDisplayItems.values;
+          
+            @override
+            void onMenuButtonPressed() {
+              return;
+            }
+          
+            @override
+            Future<void> onSelectPressed() =>
+                _navigateToScreen(_MainMenuDisplayItems.values[selectedDisplayItem]);
+          
+            Future<void> _navigateToScreen(_MainMenuDisplayItems menuItem) async {
+              setState(() => selectedDisplayItem = displayItems.indexOf(menuItem));
+              switch (menuItem) {
+                case _MainMenuDisplayItems.music:
+                  context.goNamed(Routes.musicMenu.name);
+                  break;
+                case _MainMenuDisplayItems.nowPlaying:
+                  await _navigateToNowPlayingScreen();
+                  break;
+                case _MainMenuDisplayItems.settings:
+                  context.goNamed(Routes.settings.name);
+                  break;
+                case _MainMenuDisplayItems.shuffleSongs:
+                  await ref.read(audioPlayerServiceProvider.notifier).shuffleAllSongs();
+                  await _navigateToNowPlayingScreen();
+                  break;
+              }
+            }
+          
+            Future<void> _navigateToNowPlayingScreen() async {
+              unawaited(ref.read(splitScreenViewControllerProvider).closeSplitView());
+              await context.pushNamed(Routes.nowPlaying.name, extra: Routes.menu.name);
+              unawaited(ref.read(splitScreenViewControllerProvider).openSplitView());
+            }
+          
+            Future<void> _changeSplitScreenType() async {
+              await Future.delayed(const Duration(milliseconds: 150));
+              switch (displayItems[selectedDisplayItem]) {
+                case _MainMenuDisplayItems.music:
+                  ref.read(splitScreenControllerProvider.notifier).changeSplitScreenType =
+                      SplitScreenType.albumArt;
+                  break;
+                case _MainMenuDisplayItems.settings:
+                  ref.read(splitScreenControllerProvider.notifier).changeSplitScreenType =
+                      SplitScreenType.settings;
+                  break;
+                case _MainMenuDisplayItems.shuffleSongs:
+                  ref.read(splitScreenControllerProvider.notifier).changeSplitScreenType =
+                      SplitScreenType.shuffle;
+                  break;
+                case _MainMenuDisplayItems.nowPlaying:
+                  ref.read(splitScreenControllerProvider.notifier).changeSplitScreenType =
+                      SplitScreenType.nowPlaying;
+                  break;
+              }
+            }
+          
+            @override
+            void initState() {
+              super.initState();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(tutorialControllerProvider.notifier).playMenuTutorial();
+              });
+            }
+          
+            @override
+            void didUpdateWidget(covariant MainMenuScreen oldWidget) {
+              if (widget.showTutorial) {
+                ref.read(tutorialControllerProvider.notifier).playMenuTutorial();
+              }
+              super.didUpdateWidget(oldWidget);
+            }
+          
+            @override
+            Widget build(BuildContext context) {
+              unawaited(_changeSplitScreenType());
+              if (!ref.read(splitScreenViewControllerProvider).isScreenVisible) {
+                unawaited(ref.read(splitScreenViewControllerProvider).openSplitView());
+              }
+          
+              return CupertinoPageScaffold(
+                child: Column(
+                  children: [
+                    StatusBar(title: Routes.menu.title(context)),
+                    Expanded(
+                      child: CupertinoScrollbar(
+                        controller: scrollController,
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: displayItems.length,
+                          prototypeItem: const DisplayListTile(
+                            text: '',
+                            isSelected: false,
+                          ),
+                          itemBuilder: (context, index) {
+                            return DisplayListTile(
+                              key: ValueKey(displayItems[index]),
+                              text: displayItems[index].title(context),
+                              isSelected: selectedDisplayItem == index,
+                              onTap: () async => _navigateToScreen(displayItems[index]),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          DART_LIB_FEATURES_MENU_SCREENS_MAIN_MENU_SCREEN_DART
+
+          cat > lib/features/music/cover_flow/screens/cover_flow_screen.dart << 'DART_LIB_FEATURES_MUSIC_COVER_FLOW_SCREENS_COVER_FLOW_SCREEN_DART'
+          import 'dart:async';
+          
+          import 'package:classipod/core/extensions/build_context_extensions.dart';
+          import 'package:classipod/core/navigation/routes.dart';
+          import 'package:classipod/core/widgets/empty_state_widget.dart';
+          import 'package:classipod/features/custom_screen_elements/custom_page_screen.dart';
+          import 'package:classipod/features/music/album/models/album_model.dart';
+          import 'package:classipod/features/music/album/providers/album_details_provider.dart';
+          import 'package:classipod/features/now_playing/widgets/album_reflective_art.dart';
+          import 'package:classipod/features/status_bar/widgets/status_bar.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:go_router/go_router.dart';
+          
+          class CoverFlowScreen extends ConsumerStatefulWidget {
+            const CoverFlowScreen({super.key});
+          
+            @override
+            ConsumerState createState() => _CoverFlowScreenState();
+          }
+          
+          class _CoverFlowScreenState extends ConsumerState<CoverFlowScreen>
+              with CustomPageScreen {
+            @override
+            String get routeName => Routes.coverFlow.name;
+          
+            @override
+            double get viewPortFraction => 0.54;
+          
+            @override
+            List<AlbumModel> get displayItems => ref.read(albumDetailsProvider);
+          
+            @override
+            void onSelectPressed() => _chooseAlbum(selectedDisplayItem);
+          
+            void _chooseAlbum(int index) {
+              final albumDetail = ref.read(albumDetailsProvider).elementAt(index);
+              unawaited(
+                context.pushNamed(Routes.coverFlowSelection.name, extra: albumDetail),
+              );
+            }
+          
+            @override
+            Widget build(BuildContext context) {
+              if (displayItems.isEmpty) {
+                return CupertinoPageScaffold(
+                  child: Column(
+                    children: [
+                      StatusBar(title: Routes.coverFlow.title(context)),
+                      Expanded(
+                        child: EmptyStateWidget(
+                          emptyDescription: context.localization.noMusicFilesFound,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+          
+              final safeIndex = selectedDisplayItem.clamp(0, displayItems.length - 1);
+              final selectedAlbum = displayItems[safeIndex];
+          
+              return CupertinoPageScaffold(
+                child: Column(
+                  children: [
+                    StatusBar(title: Routes.coverFlow.title(context)),
+          
+                    // ── Large top art: full-width hero of the selected album ─────────
+                    GestureDetector(
+                      onTap: () => _chooseAlbum(safeIndex),
+                      child: AlbumReflectiveArt(
+                        imageWidth: MediaQuery.sizeOf(context).width,
+                        reflectedImageHeight: 60,
+                        tiltedImage: false,
+                        thumbnailPath: selectedAlbum.albumArtPath,
+                        isOnDevice: selectedAlbum.isOnDevice(),
+                        heroTag:
+                            "${selectedAlbum.albumName}-${selectedAlbum.albumArtistName}",
+                      ),
+                    ),
+          
+                    // ── Bottom: fan carousel + labels ────────────────────────────────
+                    Expanded(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 8),
+          
+                          Expanded(
+                            child: PageView.builder(
+                              controller: pageController,
+                              itemCount: displayItems.length,
+                              itemBuilder: (context, index) {
+                                final double relativePosition = index - currentPage;
+                                return GestureDetector(
+                                  onTap: relativePosition == 0
+                                      ? () => _chooseAlbum(index)
+                                      : () async => pageController.animateToPage(
+                                            index,
+                                            duration: const Duration(milliseconds: 300),
+                                            curve: Curves.ease,
+                                          ),
+                                  child: Transform(
+                                    transform: Matrix4.identity()
+                                      ..setEntry(3, 2, 0.003)
+                                      ..scaleByDouble(
+                                        (1 - relativePosition.abs()).clamp(0.2, 0.6) +
+                                            0.4,
+                                        (1 - relativePosition.abs()).clamp(0.2, 0.6) +
+                                            0.4,
+                                        (1 - relativePosition.abs()).clamp(0.2, 0.6) +
+                                            0.4,
+                                        1,
+                                      )
+                                      ..rotateY(relativePosition * 0.9),
+                                    alignment: relativePosition >= 0
+                                        ? Alignment.centerLeft
+                                        : Alignment.centerRight,
+                                    child: AlbumReflectiveArt(
+                                      imageWidth: 230,
+                                      thumbnailPath: displayItems[index].albumArtPath,
+                                      isOnDevice: displayItems[index].isOnDevice(),
+                                      heroTag:
+                                          "cf-${displayItems[index].albumName}-${displayItems[index].albumArtistName}",
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+          
+                          // Album name + artist, slightly larger than original
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 6,
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  selectedAlbum.albumName,
+                                  maxLines: 1,
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  selectedAlbum.albumArtistName,
+                                  maxLines: 1,
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+          
+                          const SizedBox(height: 10),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          DART_LIB_FEATURES_MUSIC_COVER_FLOW_SCREENS_COVER_FLOW_SCREEN_DART
+
+          cat > lib/features/now_playing/screen/now_playing_screen.dart << 'DART_LIB_FEATURES_NOW_PLAYING_SCREEN_NOW_PLAYING_SCREEN_DART'
+          import 'dart:async';
+          
+          import 'package:classipod/core/extensions/build_context_extensions.dart';
+          import 'package:classipod/core/extensions/go_router_extensions.dart';
+          import 'package:classipod/core/navigation/routes.dart';
+          import 'package:classipod/core/services/audio_player_service.dart';
+          import 'package:classipod/core/widgets/empty_state_widget.dart';
+          import 'package:classipod/features/device/models/device_action.dart';
+          import 'package:classipod/features/device/services/device_buttons_service_provider.dart';
+          import 'package:classipod/features/music/album/models/album_model.dart';
+          import 'package:classipod/features/music/album/providers/album_details_provider.dart';
+          import 'package:classipod/features/now_playing/provider/now_playing_details_provider.dart';
+          import 'package:classipod/features/now_playing/widgets/album_reflective_art.dart';
+          import 'package:classipod/features/now_playing/widgets/lyrics_view.dart';
+          import 'package:classipod/features/now_playing/widgets/now_playing_bottom_bar.dart';
+          import 'package:classipod/features/now_playing/widgets/now_playing_widget.dart';
+          import 'package:classipod/features/now_playing/widgets/rating_bar.dart';
+          import 'package:classipod/features/now_playing/widgets/shuffle_segmented_control.dart';
+          import 'package:classipod/features/now_playing/widgets/volume_bar.dart';
+          import 'package:classipod/features/settings/controller/settings_preferences_controller.dart';
+          import 'package:classipod/features/status_bar/widgets/status_bar.dart';
+          import 'package:classipod/features/tutorial/controller/tutorial_controller.dart';
+          import 'package:flutter/cupertino.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:go_router/go_router.dart';
+          import 'package:just_audio/just_audio.dart';
+          
+          enum _NowPlayingBottomBarPage {
+            seekBar,
+            scrubberBar,
+            volumeBar,
+            shuffleBar,
+            ratingBar,
+            lyrics,
+          }
+          
+          class NowPlayingScreen extends ConsumerStatefulWidget {
+            const NowPlayingScreen({super.key});
+          
+            @override
+            ConsumerState createState() => _NowPlayingScreenState();
+          }
+          
+          class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
+            final PageController _bottomBarPageController = PageController();
+            final ScrollController _lyricsScrollController = ScrollController();
+            late PageController _coverFlowPageController;
+            double _coverFlowCurrentPage = 0;
+            int _coverFlowSelectedIndex = 0;
+            late Timer _longPressTimer;
+            Timer _lastVolumeChangeTimer = Timer(Duration.zero, () {});
+            bool _isShuffleEnabled = false;
+            _NowPlayingBottomBarPage _bottomBarPage = _NowPlayingBottomBarPage.seekBar;
+            int? _lastLyricsSongIndex;
+          
+            String get routeName => Routes.nowPlaying.name;
+          
+            Future<void> onSelectPressed() async {
+              final String? lyrics = ref
+                  .read(nowPlayingDetailsProvider)
+                  .currentMetadata
+                  ?.lyrics;
+              final bool hasLyrics = lyrics != null && lyrics.trim().isNotEmpty;
+          
+              if (_bottomBarPage == _NowPlayingBottomBarPage.seekBar) {
+                await _bottomBarPageController.animateToPage(
+                  1,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.ease,
+                );
+                setState(() {
+                  _bottomBarPage = _NowPlayingBottomBarPage.scrubberBar;
+                });
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.scrubberBar) {
+                await _bottomBarPageController.animateToPage(
+                  2,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.ease,
+                );
+                setState(() {
+                  _bottomBarPage = _NowPlayingBottomBarPage.shuffleBar;
+                });
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.shuffleBar) {
+                await ref
+                    .read(audioPlayerServiceProvider.notifier)
+                    .setShuffleMode(_isShuffleEnabled);
+                await _bottomBarPageController.animateToPage(
+                  3,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.ease,
+                );
+                setState(() {
+                  _bottomBarPage = _NowPlayingBottomBarPage.ratingBar;
+                });
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.ratingBar) {
+                if (hasLyrics) {
+                  await _bottomBarPageController.animateToPage(
+                    4,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.ease,
+                  );
+                  setState(() {
+                    _bottomBarPage = _NowPlayingBottomBarPage.lyrics;
+                  });
+                } else {
+                  await _bottomBarPageController.animateToPage(
+                    0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.ease,
+                  );
+                  setState(() {
+                    _bottomBarPage = _NowPlayingBottomBarPage.seekBar;
+                  });
+                }
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.lyrics) {
+                await _bottomBarPageController.animateToPage(
+                  0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.ease,
+                );
+                setState(() {
+                  _bottomBarPage = _NowPlayingBottomBarPage.seekBar;
+                });
+              }
+            }
+          
+            void onSelectLongPress() {
+              unawaited(context.pushNamed(Routes.nowPlayingMoreOptions.name));
+            }
+          
+            Future<void> scrollLyrics(double offsetChange) async {
+              if (!_lyricsScrollController.hasClients) {
+                return;
+              }
+          
+              final ScrollPosition position = _lyricsScrollController.position;
+              final double targetOffset = (position.pixels + offsetChange).clamp(
+                position.minScrollExtent,
+                position.maxScrollExtent,
+              );
+          
+              if (targetOffset == position.pixels) {
+                return;
+              }
+          
+              await _lyricsScrollController.animateTo(
+                targetOffset,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+              );
+            }
+          
+            void startVolumeTimer() {
+              if (_lastVolumeChangeTimer.isActive) {
+                _lastVolumeChangeTimer.cancel();
+              }
+              _lastVolumeChangeTimer = Timer.periodic(const Duration(seconds: 1), (
+                timer,
+              ) {
+                if (timer.tick >= 3) {
+                  setState(() {
+                    _bottomBarPage = _NowPlayingBottomBarPage.seekBar;
+                  });
+                  timer.cancel();
+                }
+              });
+            }
+          
+            Future<void> rotateForward() async {
+              if (_bottomBarPage == _NowPlayingBottomBarPage.scrubberBar) {
+                await ref.read(audioPlayerServiceProvider.notifier).seekForward();
+                return;
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.shuffleBar) {
+                setState(() {
+                  _isShuffleEnabled = true;
+                });
+                return;
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.ratingBar) {
+                await ref
+                    .read(nowPlayingDetailsProvider.notifier)
+                    .increaseCurrentMetadataRating();
+                return;
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.lyrics) {
+                await scrollLyrics(60);
+                return;
+              }
+              setState(() {
+                _bottomBarPage = _NowPlayingBottomBarPage.volumeBar;
+              });
+              await ref
+                  .read(settingsPreferencesControllerProvider.notifier)
+                  .increaseVolume();
+              startVolumeTimer();
+            }
+          
+            Future<void> rotateBackward() async {
+              if (_bottomBarPage == _NowPlayingBottomBarPage.scrubberBar) {
+                await ref.read(audioPlayerServiceProvider.notifier).seekBackward();
+                return;
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.shuffleBar) {
+                setState(() {
+                  _isShuffleEnabled = false;
+                });
+                return;
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.ratingBar) {
+                await ref
+                    .read(nowPlayingDetailsProvider.notifier)
+                    .decreaseCurrentMetadataRating();
+                return;
+              } else if (_bottomBarPage == _NowPlayingBottomBarPage.lyrics) {
+                await scrollLyrics(-60);
+                return;
+              }
+              setState(() {
+                _bottomBarPage = _NowPlayingBottomBarPage.volumeBar;
+              });
+              await ref
+                  .read(settingsPreferencesControllerProvider.notifier)
+                  .decreaseVolume();
+              startVolumeTimer();
+            }
+          
+            Future<void> seekForward() async {
+              await ref.read(audioPlayerServiceProvider.notifier).nextSong();
+            }
+          
+            Future<void> seekBackward() async {
+              await ref.read(audioPlayerServiceProvider.notifier).seekBackwards();
+            }
+          
+            void seekForwardLongPress() {
+              _longPressTimer = Timer.periodic(const Duration(milliseconds: 50), (
+                _,
+              ) async {
+                await ref.read(audioPlayerServiceProvider.notifier).seekForward();
+              });
+            }
+          
+            void seekBackwardLongPress() {
+              _longPressTimer = Timer.periodic(const Duration(milliseconds: 50), (
+                _,
+              ) async {
+                await ref.read(audioPlayerServiceProvider.notifier).seekBackward();
+              });
+            }
+          
+            void onLongPressEnd() {
+              if (_longPressTimer.isActive) {
+                _longPressTimer.cancel();
+                ref.read(deviceButtonsServiceProvider.notifier).resetDeviceAction();
+              }
+            }
+          
+            void onMenuButtonPressed() {
+              context.pop();
+            }
+          
+            @override
+            void initState() {
+              super.initState();
+              _coverFlowPageController = PageController(viewportFraction: 0.54);
+              _coverFlowPageController.addListener(() {
+                setState(() {
+                  _coverFlowCurrentPage =
+                      _coverFlowPageController.page ?? _coverFlowCurrentPage;
+                  _coverFlowSelectedIndex = _coverFlowCurrentPage.round();
+                });
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(tutorialControllerProvider.notifier).playNowPlayingTutorial();
+              });
+            }
+          
+            @override
+            void dispose() {
+              _lastVolumeChangeTimer.cancel();
+              _bottomBarPageController.dispose();
+              _lyricsScrollController.dispose();
+              _coverFlowPageController.dispose();
+              super.dispose();
+            }
+          
+            Future<void> deviceControlHandler(_, DeviceAction? newState) async {
+              if (newState == null || context.router.locationNamed != routeName) {
+                return;
+              }
+              switch (newState) {
+                case DeviceAction.menu:
+                  onMenuButtonPressed();
+                  break;
+                case DeviceAction.select:
+                  await onSelectPressed();
+                  break;
+                case DeviceAction.selectLongPress:
+                  onSelectLongPress();
+                  break;
+                case DeviceAction.rotateForward:
+                  await rotateForward();
+                  break;
+                case DeviceAction.rotateBackward:
+                  await rotateBackward();
+                  break;
+                case DeviceAction.seekForward:
+                  await seekForward();
+                  break;
+                case DeviceAction.seekBackward:
+                  await seekBackward();
+                  break;
+                case DeviceAction.seekForwardLongPress:
+                  seekForwardLongPress();
+                  break;
+                case DeviceAction.seekBackwardLongPress:
+                  seekBackwardLongPress();
+                  break;
+                case DeviceAction.playPause:
+                  break;
+                case DeviceAction.longPressEnd:
+                  onLongPressEnd();
+                  break;
+              }
+            }
+          
+            @override
+            Widget build(BuildContext context) {
+              final nowPlayingDetails = ref.watch(nowPlayingDetailsProvider);
+              final String? lyrics = nowPlayingDetails.currentMetadata?.lyrics;
+              final bool hasLyrics = lyrics != null && lyrics.trim().isNotEmpty;
+              final int? currentLyricsSongIndex =
+                  nowPlayingDetails.currentMetadata?.originalSongIndex;
+          
+              if (_lastLyricsSongIndex != currentLyricsSongIndex) {
+                _lastLyricsSongIndex = currentLyricsSongIndex;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!_lyricsScrollController.hasClients) {
+                    return;
+                  }
+                  _lyricsScrollController.jumpTo(0);
+                });
+              }
+          
+              if (!hasLyrics && _bottomBarPage == _NowPlayingBottomBarPage.lyrics) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) {
+                    return;
+                  }
+                  if (_bottomBarPageController.hasClients) {
+                    _bottomBarPageController.jumpToPage(0);
+                  }
+                  setState(() {
+                    _bottomBarPage = _NowPlayingBottomBarPage.seekBar;
+                  });
+                });
+              }
+          
+              ref.listen(deviceButtonsServiceProvider, deviceControlHandler);
+          
+              if (nowPlayingDetails.metadataList.isEmpty) {
+                return CupertinoPageScaffold(
+                  child: Column(
+                    children: [
+                      StatusBar(title: Routes.nowPlaying.title(context)),
+                      Expanded(
+                        child: EmptyStateWidget(
+                          emptyDescription: context.localization.noMusicFilesFound,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+          
+              return CupertinoPageScaffold(
+                child: Column(
+                  children: [
+                    StatusBar(title: Routes.nowPlaying.title(context)),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (nowPlayingDetails.isShuffleEnabled)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Icon(
+                              CupertinoIcons.shuffle,
+                              size: 20,
+                              color: context.appPrimaryTextColor,
+                            ),
+                          ),
+                        if (nowPlayingDetails.loopMode != LoopMode.off)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Icon(
+                              (nowPlayingDetails.loopMode == LoopMode.all)
+                                  ? CupertinoIcons.repeat
+                                  : CupertinoIcons.repeat_1,
+                              size: 20,
+                              color: context.appPrimaryTextColor,
+                            ),
+                          ),
+                        if (!nowPlayingDetails.isShuffleEnabled &&
+                            nowPlayingDetails.loopMode == LoopMode.off)
+                          const SizedBox(height: 20),
+                      ],
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: onSelectPressed,
+                        onLongPress: onSelectLongPress,
+                        child: Column(
+                          children: [
+                            // ── Track info row (unchanged) ────────────────────────────
+                            Padding(
+                              padding: const EdgeInsets.only(left: 10),
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                child:
+                                    (_bottomBarPage ==
+                                            _NowPlayingBottomBarPage.lyrics &&
+                                        hasLyrics)
+                                    ? LyricsView(
+                                        key: ValueKey(
+                                          'lyrics-view-${nowPlayingDetails.currentMetadata?.originalSongIndex ?? 0}',
+                                        ),
+                                        lyrics: lyrics,
+                                        scrollController: _lyricsScrollController,
+                                      )
+                                    : NowPlayingWidget(
+                                        key: const ValueKey('now-playing-view'),
+                                        nowPlayingDetails: nowPlayingDetails,
+                                      ),
+                              ),
+                            ),
+          
+                            // ── Embedded Cover Flow carousel ──────────────────────────
+                            Builder(
+                              builder: (context) {
+                                final albums = ref.watch(albumDetailsProvider);
+                                if (albums.isEmpty) return const SizedBox.shrink();
+          
+                                final safeIndex = _coverFlowSelectedIndex.clamp(
+                                  0,
+                                  albums.length - 1,
+                                );
+                                final selectedAlbum = albums[safeIndex];
+          
+                                return Expanded(
+                                  child: Column(
+                                    children: [
+                                      // Fan carousel
+                                      Expanded(
+                                        child: PageView.builder(
+                                          controller: _coverFlowPageController,
+                                          itemCount: albums.length,
+                                          itemBuilder: (context, index) {
+                                            final double rel =
+                                                index - _coverFlowCurrentPage;
+                                            return GestureDetector(
+                                              onTap: rel.abs() < 0.5
+                                                  ? () => context.pushNamed(
+                                                        Routes.coverFlowSelection.name,
+                                                        extra: albums[index],
+                                                      )
+                                                  : () =>
+                                                      _coverFlowPageController
+                                                          .animateToPage(
+                                                        index,
+                                                        duration: const Duration(
+                                                          milliseconds: 300,
+                                                        ),
+                                                        curve: Curves.ease,
+                                                      ),
+                                              child: Transform(
+                                                transform: Matrix4.identity()
+                                                  ..setEntry(3, 2, 0.003)
+                                                  ..scaleByDouble(
+                                                    (1 - rel.abs()).clamp(0.2, 0.6) +
+                                                        0.4,
+                                                    (1 - rel.abs()).clamp(0.2, 0.6) +
+                                                        0.4,
+                                                    (1 - rel.abs()).clamp(0.2, 0.6) +
+                                                        0.4,
+                                                    1,
+                                                  )
+                                                  ..rotateY(rel * 0.9),
+                                                alignment: rel >= 0
+                                                    ? Alignment.centerLeft
+                                                    : Alignment.centerRight,
+                                                child: AlbumReflectiveArt(
+                                                  imageWidth: 200,
+                                                  thumbnailPath:
+                                                      albums[index].albumArtPath,
+                                                  isOnDevice: albums[index].isOnDevice(),
+                                                  heroTag:
+                                                      "np-cf-${albums[index].albumName}-${albums[index].albumArtistName}",
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+          
+                                      // Selected album name + artist
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 4,
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            Text(
+                                              selectedAlbum.albumName,
+                                              maxLines: 1,
+                                              textAlign: TextAlign.center,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            Text(
+                                              selectedAlbum.albumArtistName,
+                                              maxLines: 1,
+                                              textAlign: TextAlign.center,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 30,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          transitionBuilder: (child, animation) {
+                            final begin = Offset(
+                              _bottomBarPage == _NowPlayingBottomBarPage.volumeBar
+                                  ? 1.0
+                                  : -0.5,
+                              0.0,
+                            );
+                            final tween = Tween(begin: begin, end: Offset.zero);
+                            final offsetAnimation = animation.drive(tween);
+          
+                            return FadeTransition(
+                              key: ValueKey<Key?>(child.key),
+                              opacity: animation,
+                              child: SlideTransition(
+                                key: ValueKey<Key?>(child.key),
+                                position: offsetAnimation,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _bottomBarPage == _NowPlayingBottomBarPage.volumeBar
+                              ? const VolumeBar()
+                              : PageView(
+                                  controller: _bottomBarPageController,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  children: [
+                                    const NowPlayingBottomBar(),
+                                    const NowPlayingBottomBar(showScrubber: true),
+                                    ShuffleSegmentedControl(
+                                      isShuffleEnabled: _isShuffleEnabled,
+                                      onValueChanged: (value) {
+                                        setState(() {
+                                          _isShuffleEnabled = value ?? _isShuffleEnabled;
+                                        });
+                                      },
+                                    ),
+                                    RatingBar(
+                                      currentRating:
+                                          nowPlayingDetails.currentMetadata?.rating ?? 0,
+                                      onRatingClicked: (val) async {
+                                        await ref
+                                            .read(nowPlayingDetailsProvider.notifier)
+                                            .setCurrentMetadataRating(val ?? 0);
+                                      },
+                                    ),
+                                    if (hasLyrics) const SizedBox(height: 10),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ),
+              );
+            }
+          }
+          DART_LIB_FEATURES_NOW_PLAYING_SCREEN_NOW_PLAYING_SCREEN_DART
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate localizations
+        run: flutter gen-l10n
+
+      - name: Build debug APK
+        run: flutter build apk --debug --flavor production
+
+      - name: Rename APK
+        run: |
+          mv build/app/outputs/flutter-apk/app-production-debug.apk \
+             build/app/outputs/flutter-apk/Classipod-Fullscreen-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Classipod-Fullscreen-APK
+          path: build/app/outputs/flutter-apk/Classipod-Fullscreen-debug.apk
+          retention-days: 7
